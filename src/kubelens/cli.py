@@ -7,6 +7,7 @@ from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
 
 from kubelens.scanner import scan_pods
+from kubelens.diagnostics import diagnose_pod
 
 
 def main() -> None:
@@ -25,19 +26,22 @@ def main() -> None:
 
     scan_parser = commands.add_parser(
         "scan",
-        help="Inspect Pods in a Kubernetes namespace",
+        help="List Pods in a Kubernetes namespace",
     )
+    scan_parser.add_argument("--context", required=True)
+    scan_parser.add_argument("--namespace", default="default")
 
-    scan_parser.add_argument(
-        "--context",
-        required=True,
-        help="Explicit Kubernetes context",
+    diagnose_parser = commands.add_parser(
+        "diagnose",
+        help="Investigate a Pod using Kubernetes evidence",
     )
-
-    scan_parser.add_argument(
-        "--namespace",
-        default="default",
-        help="Namespace to inspect (default: default)",
+    diagnose_parser.add_argument("--context", required=True)
+    diagnose_parser.add_argument("--namespace", default="default")
+    diagnose_parser.add_argument("--pod", required=True)
+    diagnose_parser.add_argument(
+        "--include-logs",
+        action="store_true",
+        help="Display up to 20 log lines per container (may be sensitive)",
     )
 
     args = parser.parse_args()
@@ -63,13 +67,62 @@ def main() -> None:
         warnings = 0
 
         for pod in pods:
-            print(f"{pod.name:<48} {pod.status:<24} {pod.restarts}")
+            print(
+                f"{pod.name:<48} "
+                f"{pod.status:<24} "
+                f"{pod.restarts}"
+            )
 
-            if pod.status not in ("Running", "Succeeded") or pod.restarts > 0:
+            if (
+                pod.status not in ("Running", "Succeeded")
+                or pod.restarts > 0
+            ):
                 warnings += 1
 
         print(f"\nScanned: {len(pods)} Pods")
         print(f"Potential warnings: {warnings}")
+
+    elif args.command == "diagnose":
+        try:
+            report = diagnose_pod(
+                context=args.context,
+                namespace=args.namespace,
+                pod_name=args.pod,
+                include_logs=args.include_logs,
+            )
+        except (ApiException, ConfigException, OSError) as exc:
+            print(f"Diagnosis failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+
+        print("\n=== KUBELENS DIAGNOSTIC REPORT ===")
+        print(f"Context: {report.context}")
+        print(f"Namespace: {report.namespace}")
+        print(f"Pod: {report.pod}")
+
+        print("\nFINDINGS")
+        for item in report.findings:
+            print(f"  - {item}")
+
+        print("\nEVIDENCE")
+        for item in report.evidence:
+            print(f"  - {item}")
+
+        print("\nKUBERNETES EVENTS")
+        for item in report.events:
+            print(f"  - {item}")
+        if not report.events:
+            print("  No Events returned.")
+
+        if args.include_logs:
+            print("\nCONTAINER LOGS (potentially sensitive)")
+            for item in report.logs:
+                print(item)
+            if not report.logs:
+                print("  No container logs returned.")
+
+        print("\nRECOMMENDED INVESTIGATION")
+        for item in report.recommendations:
+            print(f"  - {item}")
 
     else:
         parser.print_help()

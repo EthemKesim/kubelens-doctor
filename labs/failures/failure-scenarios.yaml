@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubelens-lab
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crashloop-demo
+  namespace: kubelens-lab
+  labels:
+    app: kubelens-demo
+spec:
+  restartPolicy: Always
+  containers:
+    - name: crashing-app
+      image: busybox:1.36
+      command:
+        - /bin/sh
+        - -c
+        - "echo 'Simulated application failure'; exit 1"
+      resources:
+        requests:
+          memory: 8Mi
+          cpu: 10m
+        limits:
+          memory: 32Mi
+          cpu: 100m
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oom-demo
+  namespace: kubelens-lab
+  labels:
+    app: kubelens-demo
+spec:
+  restartPolicy: Never
+  containers:
+    - name: memory-app
+      image: python:3.12-alpine
+      command:
+        - python
+        - -c
+        - |
+          import time
+          memory = bytearray(128 * 1024 * 1024)
+          time.sleep(30)
+      resources:
+        requests:
+          memory: 16Mi
+          cpu: 10m
+        limits:
+          memory: 32Mi
+          cpu: 100m
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: imagepull-demo
+  namespace: kubelens-lab
+  labels:
+    app: kubelens-demo
+spec:
+  restartPolicy: Never
+  containers:
+    - name: missing-image
+      image: example.invalid/kubelens/nonexistent:v999
+      resources:
+        requests:
+          memory: 8Mi
+          cpu: 10m
+        limits:
+          memory: 32Mi
+          cpu: 100m
