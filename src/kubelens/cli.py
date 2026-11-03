@@ -8,6 +8,7 @@ from kubernetes.config.config_exception import ConfigException
 
 from kubelens.scanner import scan_pods
 from kubelens.diagnostics import diagnose_pod
+from kubelens.reporting import report_to_json
 
 
 def main() -> None:
@@ -38,6 +39,12 @@ def main() -> None:
     diagnose_parser.add_argument("--context", required=True)
     diagnose_parser.add_argument("--namespace", default="default")
     diagnose_parser.add_argument("--pod", required=True)
+    diagnose_parser.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format (default: text)",
+    )
     diagnose_parser.add_argument(
         "--include-logs",
         action="store_true",
@@ -93,6 +100,10 @@ def main() -> None:
         except (ApiException, ConfigException, OSError) as exc:
             print(f"Diagnosis failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
+
+        if args.format == "json":
+            print(report_to_json(report))
+            return
 
         print("\n=== KUBELENS DIAGNOSTIC REPORT ===")
         print(f"Context: {report.context}")

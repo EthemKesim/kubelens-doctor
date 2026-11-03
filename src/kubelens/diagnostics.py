@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
+from kubelens.events import correlate_events, event_timestamp
+
 
 @dataclass
 class DiagnosticReport:
@@ -16,6 +18,7 @@ class DiagnosticReport:
     recommendations: list[str] = field(default_factory=list)
     events: list[str] = field(default_factory=list)
     logs: list[str] = field(default_factory=list)
+    containers: list[dict] = field(default_factory=list)
 
 
 def analyze_container(container, report: DiagnosticReport):
@@ -33,6 +36,24 @@ def analyze_container(container, report: DiagnosticReport):
     waiting = state.waiting if state else None
     terminated = state.terminated if state else None
     previous = last_state.terminated if last_state else None
+
+    report.containers.append({
+        "name": name,
+        "restart_count": restarts,
+        "waiting_reason": waiting.reason if waiting else None,
+        "termination_reason": (
+            terminated.reason if terminated else None
+        ),
+        "exit_code": (
+            terminated.exit_code if terminated else None
+        ),
+        "previous_termination_reason": (
+            previous.reason if previous else None
+        ),
+        "previous_exit_code": (
+            previous.exit_code if previous else None
+        ),
+    })
 
     if waiting and waiting.reason:
         report.evidence.append(
@@ -129,26 +150,39 @@ def diagnose_pod(
     for container in containers:
         analyze_container(container, report)
 
-    # Fetch Kubernetes Events associated with this Pod.
-    try:
-        result = api.list_namespaced_event(
-            namespace=namespace,
-            field_selector=(
-                f"involvedObject.kind=Pod,"
-                f"involvedObject.name={pod_name}"
-            ),
-        )
+    # Fetch Events by UID to avoid mixing old and new Pods.
+    pod_uid = getattr(pod.metadata, "uid", None)
 
-        for event in result.items[-10:]:
-            report.events.append(
-                f"{event.type or 'Unknown'} | "
-                f"{event.reason or 'Unknown'} | "
-                f"{(event.message or '')[:300]}"
+    if pod_uid:
+        try:
+            result = api.list_namespaced_event(
+                namespace=namespace,
+                field_selector=f"involvedObject.uid={pod_uid}",
             )
 
-    except ApiException as exc:
+            matched = correlate_events(result.items, pod_uid)
+
+            for event in matched[-10:]:
+                timestamp = event_timestamp(event)
+                time_label = (
+                    timestamp.isoformat()
+                    if timestamp else "Unknown time"
+                )
+
+                report.events.append(
+                    f"{time_label} | "
+                    f"{event.type or 'Unknown'} | "
+                    f"{event.reason or 'Unknown'} | "
+                    f"{(event.message or '')[:300]}"
+                )
+
+        except ApiException as exc:
+            report.evidence.append(
+                f"Events unavailable: HTTP {exc.status}"
+            )
+    else:
         report.evidence.append(
-            f"Events unavailable: HTTP {exc.status}"
+            "Events unavailable: Pod UID missing."
         )
 
     # Logs are opt-in because application logs may contain secrets.
