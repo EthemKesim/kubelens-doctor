@@ -10,6 +10,7 @@ def report_to_json(report) -> str:
     payload = asdict(report)
     payload.pop("conditions", None)
     payload.pop("event_records", None)
+    payload.pop("dependencies", None)
     payload["schema_version"] = "1.0"
 
     return json.dumps(

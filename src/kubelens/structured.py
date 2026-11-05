@@ -32,6 +32,14 @@ RULES = {
         "Kubernetes could not pull the container image",
         "Inspect image pull Events and registry configuration.",
     ),
+    "CreateContainerConfigError": (
+        "container.configuration_error",
+        "observed_symptom",
+        "high",
+        "Kubernetes could not prepare the container configuration",
+        "Inspect container Events and verify referenced ConfigMaps, "
+        "Secrets, environment variables, and volume configuration.",
+    ),
     "OOMKilled": (
         "container.oom_killed",
         "confirmed_condition",
