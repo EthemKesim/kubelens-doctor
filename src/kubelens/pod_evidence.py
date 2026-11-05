@@ -1,5 +1,6 @@
 """Enrich structured reports with Pod conditions and Event evidence."""
 
+from kubelens.event_records import normalize_events
 from kubelens.models import (
     Evidence,
     Finding,
@@ -63,38 +64,32 @@ def enrich_pod_evidence(payload: dict, report) -> dict:
             if reason_ref:
                 unschedulable_refs.append(reason_ref)
 
-    for event in report.event_records:
-        reason = event.get("reason")
-        event_type = event.get("type")
-        timestamp = event.get("timestamp")
+    # Preserve each Event as one coherent observation.
+    payload["events"] = []
 
-        if not reason:
-            continue
+    for event in normalize_events(report.event_records):
+        payload["events"].append({
+            **event,
+            "resource": serialize_model(resource),
+        })
 
-        event_ref = add_evidence(
+        # Keep evidence references compatible with existing rules.
+        evidence_ref = add_evidence(
             "kubernetes.event",
             "event.reason",
-            reason,
+            event["reason"],
         )
 
-        if event_type:
-            add_evidence(
-                "kubernetes.event",
-                "event.type",
-                event_type,
-            )
+        # Connect the evidence to its complete Event record.
+        payload["evidence"][-1]["event_ref"] = event["id"]
 
-        if timestamp:
-            add_evidence(
-                "kubernetes.event",
-                "event.timestamp",
-                timestamp,
-            )
-
-        # An Event supports an existing scheduling finding.
-        # An Event alone does not prove the current Pod condition.
-        if reason == "FailedScheduling" and unschedulable_refs:
-            unschedulable_refs.append(event_ref)
+        # Historical Events support findings but do not independently
+        # establish the current Pod scheduling condition.
+        if (
+            event["reason"] == "FailedScheduling"
+            and unschedulable_refs
+        ):
+            unschedulable_refs.append(evidence_ref)
 
     if unschedulable_refs:
         finding = Finding(
