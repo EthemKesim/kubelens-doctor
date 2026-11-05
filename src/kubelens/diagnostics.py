@@ -19,6 +19,8 @@ class DiagnosticReport:
     events: list[str] = field(default_factory=list)
     logs: list[str] = field(default_factory=list)
     containers: list[dict] = field(default_factory=list)
+    conditions: list[dict] = field(default_factory=list)
+    event_records: list[dict] = field(default_factory=list)
 
 
 def analyze_container(container, report: DiagnosticReport):
@@ -142,6 +144,14 @@ def diagnose_pod(
         f"Pod phase: {pod.status.phase or 'Unknown'}"
     )
 
+    # Capture conditions without copying their free-text messages.
+    for condition in pod.status.conditions or []:
+        report.conditions.append({
+            "type": condition.type,
+            "status": condition.status,
+            "reason": condition.reason,
+        })
+
     containers = (
         (pod.status.init_container_statuses or [])
         + (pod.status.container_statuses or [])
@@ -163,6 +173,16 @@ def diagnose_pod(
             matched = correlate_events(result.items, pod_uid)
 
             for event in matched[-10:]:
+                timestamp = event_timestamp(event)
+                report.event_records.append({
+                    "reason": event.reason,
+                    "type": event.type,
+                    "timestamp": (
+                        timestamp.isoformat()
+                        if timestamp else None
+                    ),
+                })
+
                 timestamp = event_timestamp(event)
                 time_label = (
                     timestamp.isoformat()
