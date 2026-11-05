@@ -1,14 +1,18 @@
 """Command-line interface for KubeLens Doctor."""
 
 import argparse
+import json
 import sys
 
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
+from urllib3.exceptions import HTTPError
 
 from kubelens.scanner import scan_pods
 from kubelens.diagnostics import diagnose_pod
 from kubelens.reporting import report_to_json
+from kubelens.errors import format_kubernetes_error
+from kubelens.structured import build_structured_report
 
 
 def main() -> None:
@@ -41,7 +45,7 @@ def main() -> None:
     diagnose_parser.add_argument("--pod", required=True)
     diagnose_parser.add_argument(
         "--format",
-        choices=("text", "json"),
+        choices=("text", "json", "structured-json"),
         default="text",
         help="Output format (default: text)",
     )
@@ -56,8 +60,13 @@ def main() -> None:
     if args.command == "scan":
         try:
             pods = scan_pods(args.context, args.namespace)
-        except (ApiException, ConfigException, OSError) as exc:
-            print(f"Scan failed: {exc}", file=sys.stderr)
+        except (
+            ApiException, ConfigException, HTTPError, OSError
+        ) as exc:
+            print(
+                format_kubernetes_error(exc, args.context),
+                file=sys.stderr,
+            )
             raise SystemExit(1) from exc
 
         print("\nKubeLens Doctor v0.1.0")
@@ -97,9 +106,22 @@ def main() -> None:
                 pod_name=args.pod,
                 include_logs=args.include_logs,
             )
-        except (ApiException, ConfigException, OSError) as exc:
-            print(f"Diagnosis failed: {exc}", file=sys.stderr)
+        except (
+            ApiException, ConfigException, HTTPError, OSError
+        ) as exc:
+            print(
+                format_kubernetes_error(exc, args.context),
+                file=sys.stderr,
+            )
             raise SystemExit(1) from exc
+
+        if args.format == "structured-json":
+            print(json.dumps(
+                build_structured_report(report),
+                indent=2,
+                ensure_ascii=False,
+            ))
+            return
 
         if args.format == "json":
             print(report_to_json(report))
