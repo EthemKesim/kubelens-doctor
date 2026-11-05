@@ -2,6 +2,7 @@
 
 from kubelens.event_records import normalize_events
 from kubelens.dependency_rules import enrich_dependencies
+from kubelens.volume_diagnostics import enrich_volume_evidence
 from kubelens.models import (
     Evidence,
     Finding,
@@ -121,4 +122,5 @@ def enrich_pod_evidence(payload: dict, report) -> dict:
         "No known findings does not mean the Pod is healthy.",
     ]
 
-    return enrich_dependencies(payload, report)
+    payload = enrich_dependencies(payload, report)
+    return enrich_volume_evidence(payload, report)

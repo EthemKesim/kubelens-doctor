@@ -11,6 +11,7 @@ def report_to_json(report) -> str:
     payload.pop("conditions", None)
     payload.pop("event_records", None)
     payload.pop("dependencies", None)
+    payload.pop("volume_dependencies", None)
     payload["schema_version"] = "1.0"
 
     return json.dumps(

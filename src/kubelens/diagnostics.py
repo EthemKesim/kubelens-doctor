@@ -7,6 +7,7 @@ from kubernetes.client.exceptions import ApiException
 
 from kubelens.events import correlate_events, event_timestamp
 from kubelens.dependencies import collect_dependencies
+from kubelens.volume_diagnostics import collect_volume_dependencies
 
 
 @dataclass
@@ -23,6 +24,7 @@ class DiagnosticReport:
     conditions: list[dict] = field(default_factory=list)
     event_records: list[dict] = field(default_factory=list)
     dependencies: list[dict] = field(default_factory=list)
+    volume_dependencies: list[dict] = field(default_factory=list)
 
 
 def analyze_container(container, report: DiagnosticReport):
@@ -164,6 +166,9 @@ def diagnose_pod(
 
     # Inspect referenced resources without reading configuration values.
     report.dependencies = collect_dependencies(api, pod, namespace)
+    report.volume_dependencies = collect_volume_dependencies(
+        api, pod, namespace
+    )
 
     # Fetch Events by UID to avoid mixing old and new Pods.
     pod_uid = getattr(pod.metadata, "uid", None)
