@@ -1,5 +1,7 @@
 """Build traceable reports from existing Kubernetes diagnostics."""
 
+from kubelens.pod_evidence import enrich_pod_evidence
+
 from kubelens.models import (
     Evidence,
     Finding,
@@ -147,7 +149,7 @@ def build_structured_report(report) -> dict:
                 )
             )
 
-    return {
+    payload = {
         "schema_version": "2.0",
         "context": report.context,
         "namespace": report.namespace,
@@ -165,3 +167,5 @@ def build_structured_report(report) -> dict:
             "No known findings does not mean the Pod is healthy.",
         ],
     }
+
+    return enrich_pod_evidence(payload, report)

@@ -8,6 +8,8 @@ def report_to_json(report) -> str:
     """Serialize a diagnostic report as formatted JSON."""
 
     payload = asdict(report)
+    payload.pop("conditions", None)
+    payload.pop("event_records", None)
     payload["schema_version"] = "1.0"
 
     return json.dumps(
